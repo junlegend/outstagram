@@ -1,10 +1,13 @@
+import bcrypt
 import json
+import jwt
 
 from django.http  import JsonResponse
 from django.views import View
 
 from .models      import User
-from .validation   import *
+from my_settings  import SECRET_KEY
+from .validation  import *
 
 
 class SignupView(View):
@@ -28,20 +31,46 @@ class SignupView(View):
             
             if User.objects.filter(mobile_number=data['mobile_number']).exists():
                 return JsonResponse({'message': 'Already registered mobile_number'}, status=400)
+            
+            encoded_password = data['password'].encode('utf-8')
+            hashed_password  = bcrypt.hashpw(encoded_password, bcrypt.gensalt())
 
             User.objects.create(
-                name = data['name'],
-                email = data['email'],
-                password = data['password'],
+                name          = data['name'],
+                email         = data['email'],
+                password      = hashed_password.decode('utf-8'),
                 mobile_number = data['mobile_number'],
-                nickname = data['nickname']
+                nickname      = data['nickname']
             )
             
-            return JsonResponse({'message': 'SUCCESS'}, status=201)
+            email = User.objects.get(email=data['email'])
+            SECRET = SECRET_KEY
+            token = jwt.encode({'id': email.id}, SECRET_KEY, algorithm='HS256')
+            return JsonResponse({'message': 'SUCCESS', 'token': token}, status=201)
         
-        #except KeyError:
-            #return JsonResponse({'message': 'KEY_ERROR'}, status=400)
+        except KeyError:
+            return JsonResponse({'message': 'KEY_ERROR'}, status=400)
 
-        except Exception as error:
-            print(error.__class__)
-            return JsonResponse({'message': 'ERROR'})
+
+class SigninView(View):
+    def post(self, request):
+        data = json.loads(request.body)
+        
+        try:
+            email            = User.objects.get(email=data['email'])
+            encoded_password = data['password'].encode('utf-8')
+            
+            SECRET = SECRET_KEY
+            token  = jwt.encode({'id': email.id}, SECRET_KEY, algorithm='HS256')
+
+            if bcrypt.checkpw(encoded_password, email.password.encode('utf-8')):
+                return JsonResponse({'message': 'S', 'token': token}, status=201)
+            
+            else:
+                return JsonResponse({'message': 'I'}, status=401)
+                
+        except KeyError:
+            return JsonResponse({'message': 'K'}, status=400)
+            
+        except User.DoesNotExist:
+            return JsonResponse({'message': 'I'}, status=401)
